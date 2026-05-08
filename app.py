@@ -1,42 +1,111 @@
 import streamlit as st
+import google.generativeai as genai
 import datetime
 
-# 模拟 AI 生成的内容（在实际部署中，这里可以调用 Gemini API）
-def get_daily_content(subject):
-    # 这里可以接入 API，根据日期自动生成不重复的知识点
-    contents = {
-        "语文": "【专题：苏轼的豁达人生】今日学习《定风波》，重点掌握‘归去，也无风雨也无晴’的意境。",
-        "英语": "【Vocabulary】Root: 'Spect' (to look). Words: Inspect, Spectacle, Retrospect.",
-        "数学": "【解题技巧】几何辅助线的‘三步走’战略：找中点、连对角、构造全等。",
-        "社会": "【记忆宫殿】用故事线串联‘工业革命’的三个阶段及关键人物。",
-        "科学": "【动手实验】利用家里的白醋和白糖，观察晶体析出过程，记录饱和溶液变化。"
-    }
-    return contents.get(subject, "正在加载...")
+# --- 配置页面 ---
+st.set_page_config(
+    page_title="ScholarAI | 初中生智能全能学习站",
+    page_icon="🎓",
+    layout="wide"
+)
 
-# --- 网页 UI 设计 ---
-st.set_page_config(page_title="女儿的智慧花园", layout="wide")
+# --- 侧边栏：配置与导航 ---
+st.sidebar.title("⚙️ 控制面板")
 
-st.title("🌟 ScholarAI：初中专题自动化学习平台")
-st.caption(f"今天是：{datetime.date.today()} | 知识已自动更新")
+# 优先从 Streamlit Secrets 获取 API KEY，如果没有则提示输入
+if "GEMINI_API_KEY" in st.secrets:
+    api_key = st.secrets["GEMINI_API_KEY"]
+else:
+    api_key = st.sidebar.text_input("请输入 Gemini API Key:", type="password")
 
-# 侧边栏导航
-subject_choice = st.sidebar.radio("选择学科领域", ["语文", "英语", "数学", "社会", "科学"])
+if not api_key:
+    st.warning("⚠️ 请在侧边栏配置 API Key 以启用 AI 自动化功能。")
+    st.stop()
 
-# 主界面显示
-st.header(f"📚 {subject_choice} 专题深度学习")
+# 初始化 AI 引擎
+genai.configure(api_key=api_key)
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-col1, col2 = st.columns([2, 1])
+subject = st.sidebar.selectbox(
+    "选择学习科目",
+    ["语文", "英语", "数学", "社会", "科学"]
+)
 
+# --- 核心逻辑：自动化内容生成 ---
+def get_automated_lesson(subject):
+    today = datetime.date.today()
+    # 构造针对性极强的 Prompt，确保知识点符合初中水平并具有深度
+    prompt = f"""
+    你是一名经验丰富的初中全科名师。今天是 {today}。
+    请为学生生成一个关于【{subject}】的深度学习专题。
+    
+    具体要求：
+    1. **专题深度**：不要只列出基础知识，要包含解题思路、思维方法或背景深度。
+    2. **模块化内容**：
+       - 【今日目标】：明确今天要掌握的 1 个核心能力。
+       - 【知识精讲】：深入浅出的讲解。如果是数学/科学，请包含典型公式或原理。
+       - 【案例拆解】：一个具体的例题或现象分析。
+       - 【随堂挑战】：出一道启发性的题目，要求学生回答。
+    3. **格式**：使用 Markdown 格式，多用粗体、列表和引用，使其易于阅读。
+    """
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"内容生成失败，请检查网络或 API 额度：{str(e)}"
+
+def get_ai_feedback(content, student_answer):
+    feedback_prompt = f"""
+    作为老师，请根据以下教学内容和学生的回答进行批改：
+    ---
+    教学专题内容：{content}
+    学生的回答：{student_answer}
+    ---
+    要求：
+    1. 给予鼓励性评价。
+    2. 指出回答中的亮点和不足。
+    3. 如果有错，请提供详细的解析和正确答案。
+    """
+    try:
+        response = model.generate_content(feedback_prompt)
+        return response.text
+    except Exception as e:
+        return f"批改失败：{str(e)}"
+
+# --- 主界面 UI ---
+st.title(f"🚀 {subject} 专题：自动深度学习平台")
+st.caption(f"📅 学习进度更新日期：{datetime.date.today()} | 状态：AI 实时赋能")
+
+# 利用 Session State 缓存今日内容，防止页面刷新导致 API 重复调用（节省额度）
+cache_key = f"lesson_{subject}_{datetime.date.today()}"
+if cache_key not in st.session_state:
+    with st.spinner(f"AI 老师正在撰写【{subject}】专题内容..."):
+        st.session_state[cache_key] = get_automated_lesson(subject)
+
+# 显示内容
+st.markdown("---")
+st.markdown(st.session_state[cache_key])
+
+# --- 互动区 ---
+st.divider()
+st.subheader("📝 互动练习与思考")
+answer = st.text_area("请在此处输入你的回答、解题步骤或实验心得：", height=200, placeholder="写下你的想法，AI 老师会实时批改...")
+
+col1, col2 = st.columns([1, 4])
 with col1:
-    st.info(get_daily_content(subject_choice))
-    st.write("---")
-    st.subheader("📝 今日挑战")
-    st.text_area("在下方输入你的思考或解题步骤：", placeholder="AI 会根据你的回答提供反馈...")
-    if st.button("提交并获取 AI 点评"):
-        st.success("提交成功！AI 正在分析你的答案...（此功能可接入 API 实现自动批改）")
+    submit_btn = st.button("提交批改", type="primary")
 
-with col2:
-    st.markdown("### 📈 学习进度")
-    st.progress(65) # 这里可以根据学习记录动态变化
-    st.write("✅ 已连续学习：15 天")
-    st.write("🔥 词汇量预计增长：1200+")
+if submit_btn:
+    if answer.strip():
+        with st.spinner("正在分析你的回答..."):
+            feedback = get_ai_feedback(st.session_state[cache_key], answer)
+            st.success("✅ 批改已完成！")
+            st.markdown("### 👨‍🏫 老师反馈")
+            st.info(feedback)
+    else:
+        st.warning("内容不能为空，请输入你的思考。")
+
+# --- 底部装饰 ---
+st.sidebar.markdown("---")
+st.sidebar.write("✨ **学习小贴士**：")
+st.sidebar.caption("每天换一个科目，保持大脑的交叉记忆活性。科学证明这种方式比单科突击更高效。")
