@@ -12,13 +12,20 @@ st.set_page_config(
 # --- 2. 侧边栏：安全配置 ---
 st.sidebar.title("🛠️ 教师端配置")
 # 建议在 Streamlit Secrets 中配置，此处为本地调试入口
-minimax_api_key = st.sidebar.text_input("MiniMax_API_Key:", type="password")
-minimax_group_id = st.sidebar.text_input("MiniMax Group ID:")
+# --- 修改后的强制读取代码 ---
+try:
+    # 尝试从 Secrets 字典中直接获取
+    minimax_api_key = st.secrets["MINIMAX_API_KEY"]
+    minimax_group_id = st.secrets["MINIMAX_GROUP_ID"]
+except Exception:
+    # 如果后台没找到，才显示输入框
+    st.sidebar.warning("🔑 后台 Secrets 配置未生效")
+    minimax_api_key = st.sidebar.text_input("MiniMax API Key:", type="password")
+    minimax_group_id = st.sidebar.text_input("MiniMax Group ID:")
 
 if not minimax_api_key or not minimax_group_id:
-    st.info("💡 请输入您的 MiniMax API Key 和 Group ID 以开始自动化教学。")
+    st.info("💡 请先在 Streamlit 后台配置 Secrets 或手动输入。")
     st.stop()
-
 # 初始化 OpenAI 兼容客户端
 client = OpenAI(
     api_key=minimax_api_key,
@@ -46,7 +53,7 @@ def generate_m27_content(subject):
 
     try:
         response = client.chat.completions.create(
-            model="minimax-text-01", # 这是 M2.7 系列在 API 中的标准 ID
+            model="MiniMax-M2.7", # 这是 M2.7 系列在 API 中的标准 ID
             messages=[
                 {"role": "system", "content": "你是一名基于 MiniMax M2.7 技术的全科特级教师。你的教学特点是：逻辑缜密、善于启发、注重知识的底层逻辑而非死记硬背。"},
                 {"role": "user", "content": prompts[subject]}
