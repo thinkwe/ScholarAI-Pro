@@ -1,118 +1,96 @@
 import streamlit as st
-import google.generativeai as genai
+from openai import OpenAI
 import datetime
 
-# --- 配置页面 ---
+# --- 1. 页面配置 ---
 st.set_page_config(
-    page_title="ScholarAI | 初中生智能全能学习站",
-    page_icon="🎓",
+    page_title="ScholarAI Pro | MiniMax M2.7 驱动", 
+    page_icon="🎓", 
     layout="wide"
 )
 
-# --- 侧边栏：配置与导航 ---
-st.sidebar.title("⚙️ 控制面板")
+# --- 2. 侧边栏：安全配置 ---
+st.sidebar.title("🛠️ 教师端配置")
+# 建议在 Streamlit Secrets 中配置，此处为本地调试入口
+minimax_api_key = st.sidebar.text_input("MiniMax_API_Key:", type="password")
+minimax_group_id = st.sidebar.text_input("MiniMax Group ID:")
 
-# 优先从 Streamlit Secrets 获取 API KEY，如果没有则提示输入
-if "GEMINI_API_KEY" in st.secrets:
-    api_key = st.secrets["GEMINI_API_KEY"]
-else:
-    api_key = st.sidebar.text_input("请输入 Gemini API Key:", type="password")
-
-if not api_key:
-    st.warning("⚠️ 请在侧边栏配置 API Key 以启用 AI 自动化功能。")
+if not minimax_api_key or not minimax_group_id:
+    st.info("💡 请输入您的 MiniMax API Key 和 Group ID 以开始自动化教学。")
     st.stop()
 
-# 初始化 AI 引擎
-genai.configure(api_key=api_key)
+# 初始化 OpenAI 兼容客户端
+client = OpenAI(
+    api_key=minimax_api_key,
+    base_url="https://api.minimax.chat/v1",
+)
 
-# --- 修改后的初始化部分 ---
-try:
-    # 优先使用 2.0 Flash 性能更好且更稳定
-    model = genai.GenerativeModel('gemini-2.0-flash')
-except Exception:
-    # 如果 2.0 还没普及，回退到 1.5
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    
 subject = st.sidebar.selectbox(
-    "选择学习科目",
+    "选择今日研究专题", 
     ["语文", "英语", "数学", "社会", "科学"]
 )
 
-# --- 核心逻辑：自动化内容生成 ---
-def get_automated_lesson(subject):
+# --- 3. 自动化专题引擎 ---
+def generate_m27_content(subject):
     today = datetime.date.today()
-    # 构造针对性极强的 Prompt，确保知识点符合初中水平并具有深度
-    prompt = f"""
-    你是一名经验丰富的初中全科名师。今天是 {today}。
-    请为学生生成一个关于【{subject}】的深度学习专题。
     
-    具体要求：
-    1. **专题深度**：不要只列出基础知识，要包含解题思路、思维方法或背景深度。
-    2. **模块化内容**：
-       - 【今日目标】：明确今天要掌握的 1 个核心能力。
-       - 【知识精讲】：深入浅出的讲解。如果是数学/科学，请包含典型公式或原理。
-       - 【案例拆解】：一个具体的例题或现象分析。
-       - 【随堂挑战】：出一道启发性的题目，要求学生回答。
-    3. **格式**：使用 Markdown 格式，多用粗体、列表和引用，使其易于阅读。
-    """
+    # 针对 M2.7 模型优化的深度 Prompt
+    # M2.7 擅长处理复杂逻辑，所以我们可以要求它输出更具深度的内容
+    prompts = {
+        "语文": f"今天是{today}。作为语文名师，请针对初中生生成一个‘深度文学素养’专题。要求：包含一篇经典散文/古文的文本细读、3个高阶修辞手法解析、以及一个联想写作练习。",
+        "英语": f"今天是{today}。请生成‘完形填空逻辑拆解’专题。通过一段150词左右的语篇，讲解上下文线索（Clues）的寻找方法，并标注3个核心短语的变式用法。",
+        "数学": f"今天是{today}。请讲解一个初中数学压轴题模型（如：中点模型、路径最值问题）。要求：用 LaTeX 格式书写公式，包含‘模型构造-例题示范-解析思维导图’。",
+        "社会": f"今天是{today}。请结合历史与地理，分析一个‘文明交汇点’（如丝绸之路或大航海时代）。要求：用逻辑链条串联因果关系，并提供一个辅助记忆的结构化框架。",
+        "科学": f"今天是{today}。请设计一个‘探索性实验’专题（如：探究影响电磁铁磁性强弱的因素）。要求：包含假设、变量控制、实验步骤及原理的深度推导。"
+    }
+
     try:
-        response = model.generate_content(prompt)
-        return response.text
+        response = client.chat.completions.create(
+            model="minimax-text-01", # 这是 M2.7 系列在 API 中的标准 ID
+            messages=[
+                {"role": "system", "content": "你是一名基于 MiniMax M2.7 技术的全科特级教师。你的教学特点是：逻辑缜密、善于启发、注重知识的底层逻辑而非死记硬背。"},
+                {"role": "user", "content": prompts[subject]}
+            ],
+            extra_headers={"GroupId": minimax_group_id}
+        )
+        return response.choices[0].message.content
     except Exception as e:
-        return f"内容生成失败，请检查网络或 API 额度：{str(e)}"
+        return f"❌ M2.7 引擎调度错误: {str(e)}"
 
-def get_ai_feedback(content, student_answer):
-    feedback_prompt = f"""
-    作为老师，请根据以下教学内容和学生的回答进行批改：
-    ---
-    教学专题内容：{content}
-    学生的回答：{student_answer}
-    ---
-    要求：
-    1. 给予鼓励性评价。
-    2. 指出回答中的亮点和不足。
-    3. 如果有错，请提供详细的解析和正确答案。
-    """
-    try:
-        response = model.generate_content(feedback_prompt)
-        return response.text
-    except Exception as e:
-        return f"批改失败：{str(e)}"
+# --- 4. 主界面布局 ---
+st.title(f"🚀 ScholarAI Pro：{subject}自动深化学习")
+st.caption(f"Powered by MiniMax M2.7 | 知识体系每天自动更新")
 
-# --- 主界面 UI ---
-st.title(f"🚀 {subject} 专题：自动深度学习平台")
-st.caption(f"📅 学习进度更新日期：{datetime.date.today()} | 状态：AI 实时赋能")
-
-# 利用 Session State 缓存今日内容，防止页面刷新导致 API 重复调用（节省额度）
-cache_key = f"lesson_{subject}_{datetime.date.today()}"
+# 缓存机制：确保一天内同一科目只消耗一次 API 额度
+cache_key = f"m27_{subject}_{datetime.date.today()}"
 if cache_key not in st.session_state:
-    with st.spinner(f"AI 老师正在撰写【{subject}】专题内容..."):
-        st.session_state[cache_key] = get_automated_lesson(subject)
+    with st.spinner("M2.7 正在构思今日深度专题..."):
+        st.session_state[cache_key] = generate_m27_content(subject)
 
-# 显示内容
+# 展示生成的教学内容
 st.markdown("---")
 st.markdown(st.session_state[cache_key])
 
-# --- 互动区 ---
+# --- 5. 交互式反馈（AI 批改） ---
 st.divider()
-st.subheader("📝 互动练习与思考")
-answer = st.text_area("请在此处输入你的回答、解题步骤或实验心得：", height=200, placeholder="写下你的想法，AI 老师会实时批改...")
+st.subheader("📝 学生反馈与在线作业")
+user_submission = st.text_area("请在此输入你的解题步骤、练习答案或对今日专题的疑问：", height=200)
 
-col1, col2 = st.columns([1, 4])
-with col1:
-    submit_btn = st.button("提交批改", type="primary")
-
-if submit_btn:
-    if answer.strip():
-        with st.spinner("正在分析你的回答..."):
-            feedback = get_ai_feedback(st.session_state[cache_key], answer)
-            st.success("✅ 批改已完成！")
-            st.markdown("### 👨‍🏫 老师反馈")
-            st.info(feedback)
+if st.button("提交给 M2.7 老师点睛"):
+    if user_submission:
+        with st.spinner("M2.7 正在进行深度逻辑评估..."):
+            correction_prompt = f"针对专题：{st.session_state[cache_key]}\n学生的反馈是：{user_submission}\n请进行精细化批改。如果是疑问，请给出引导性回答而非直接给答案。"
+            
+            feedback = client.chat.completions.create(
+                model="minimax-text-01",
+                messages=[
+                    {"role": "system", "content": "你负责对学生的作业进行‘点睛式’批改。"},
+                    {"role": "user", "content": correction_prompt}
+                ],
+                extra_headers={"GroupId": minimax_group_id}
+            )
+            st.success("✅ 批改完成！")
+            st.markdown("### 👨‍🏫 老师点评")
+            st.info(feedback.choices[0].message.content)
     else:
-        st.warning("内容不能为空，请输入你的思考。")
-
-# --- 底部装饰 ---
-st.sidebar.markdown("---")
-st.sidebar.write("✨ **学习小贴士**：")
-st.sidebar.caption("每天换一个科目，保持大脑的交叉记忆活性。科学证明这种方式比单科突击更高效。")
+        st.warning("请先填写你的学习反馈。")
