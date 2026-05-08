@@ -24,8 +24,15 @@ if not api_key:
 
 # 初始化 AI 引擎
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-1.5-flash')
 
+# --- 修改后的初始化部分 ---
+try:
+    # 优先使用 2.0 Flash 性能更好且更稳定
+    model = genai.GenerativeModel('gemini-2.0-flash')
+except Exception:
+    # 如果 2.0 还没普及，回退到 1.5
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    
 subject = st.sidebar.selectbox(
     "选择学习科目",
     ["语文", "英语", "数学", "社会", "科学"]
